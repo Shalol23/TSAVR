@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nexus Museum — Interactive VR</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;font-family:monospace;color:#fff;height:100vh;width:100vw}
+#canvas{width:100%;height:100%;display:block}
+#hud{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+#crosshair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:16px;height:16px}
+#crosshair::before,#crosshair::after{content:'';position:absolute;background:rgba(255,255,255,0.8)}
+#crosshair::before{width:2px;height:16px;left:7px;top:0}
+#crosshair::after{width:16px;height:2px;top:7px;left:0}
+#interact-hint{position:absolute;top:55%;left:50%;transform:translateX(-50%);font-size:12px;color:rgba(255,255,255,0.8);letter-spacing:2px;text-transform:uppercase;opacity:0;transition:opacity 0.3s;text-align:center;background:rgba(0,0,0,0.5);padding:6px 14px;border-radius:20px}
+#stats{position:absolute;top:16px;left:16px;font-size:11px;letter-spacing:1px;line-height:1.8;opacity:0.7;background:rgba(0,0,0,0.4);padding:8px 12px;border-radius:4px}
+#minimap-wrap{position:absolute;bottom:16px;right:16px}
+#minimap-label{font-size:9px;letter-spacing:2px;opacity:0.4;text-align:center;margin-bottom:4px}
+#minimap{width:110px;height:110px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.6);border-radius:4px}
+#room-label{position:absolute;top:16px;right:16px;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:0.6;text-align:right;background:rgba(0,0,0,0.4);padding:8px 12px;border-radius:4px}
+#controls-hint{position:absolute;bottom:16px;left:16px;font-size:10px;letter-spacing:1px;opacity:0.35;line-height:1.9;background:rgba(0,0,0,0.4);padding:8px 12px;border-radius:4px}
+
+#panel{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:min(500px,92vw);background:rgba(4,6,18,0.98);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:30px;display:none;pointer-events:auto;max-height:88vh;overflow-y:auto}
+#panel::-webkit-scrollbar{width:4px}
+#panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
+#panel h2{font-size:11px;letter-spacing:3px;text-transform:uppercase;margin-bottom:8px;opacity:0.45}
+#panel h3{font-size:19px;font-weight:normal;margin-bottom:18px;line-height:1.4;letter-spacing:0.5px}
+#panel p{font-size:13px;line-height:1.85;opacity:0.72;margin-bottom:18px}
+#npc{background:rgba(255,255,255,0.03);border-left:2px solid rgba(255,255,255,0.15);padding:14px 18px;margin-bottom:16px;border-radius:0 4px 4px 0}
+#npc-name{font-size:10px;letter-spacing:2px;opacity:0.45;margin-bottom:8px}
+#npc-text{font-size:13px;font-style:italic;opacity:0.65;line-height:1.75}
+#egg-zone{background:rgba(255,140,0,0.04);border:1px solid rgba(255,140,0,0.18);border-radius:4px;padding:14px 18px;margin-bottom:16px;cursor:pointer;transition:background 0.2s}
+#egg-zone:hover{background:rgba(255,140,0,0.09)}
+#egg-label{font-size:10px;letter-spacing:2px;color:rgba(255,140,0,0.65);margin-bottom:8px}
+#egg-text{font-size:12px;opacity:0.65;line-height:1.75}
+#quiz-section{margin-bottom:16px}
+#quiz-q{font-size:12px;letter-spacing:1px;margin-bottom:12px;opacity:0.8;line-height:1.5}
+.qopt{display:block;width:100%;text-align:left;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.09);color:#fff;font-family:monospace;font-size:12px;padding:10px 16px;margin-bottom:7px;cursor:pointer;border-radius:3px;transition:all 0.15s;letter-spacing:0.5px}
+.qopt:hover:not(:disabled){background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.25)}
+.qopt.correct{border-color:#4ade80;color:#4ade80;background:rgba(74,222,128,0.07)}
+.qopt.wrong{border-color:#f87171;color:#f87171;background:rgba(248,113,113,0.07)}
+#quiz-result{font-size:11px;letter-spacing:1px;margin-top:8px;min-height:16px}
+#tt-btn{width:100%;background:rgba(168,85,247,0.07);border:1px solid rgba(168,85,247,0.25);color:rgba(168,85,247,0.85);font-family:monospace;font-size:11px;letter-spacing:2px;padding:11px;cursor:pointer;border-radius:3px;transition:all 0.2s;text-transform:uppercase;margin-top:8px}
+#tt-btn:hover{background:rgba(168,85,247,0.14);border-color:rgba(168,85,247,0.5)}
+#close-btn{position:absolute;top:14px;right:16px;background:none;border:none;color:rgba(255,255,255,0.35);font-size:18px;cursor:pointer;font-family:monospace;pointer-events:auto;line-height:1}
+#close-btn:hover{color:rgba(255,255,255,0.75)}
+
+#toast{position:absolute;bottom:70px;left:50%;transform:translateX(-50%);background:rgba(8,12,28,0.96);border:1px solid rgba(255,255,255,0.12);font-size:11px;letter-spacing:1.5px;padding:9px 20px;border-radius:20px;opacity:0;transition:opacity 0.3s;white-space:nowrap;pointer-events:none;text-transform:uppercase}
+
+#welcome{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:auto;padding:20px}
+#welcome-inner{background:rgba(4,6,18,0.92);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:48px 52px}
+#welcome h1{font-size:clamp(20px,4vw,32px);letter-spacing:8px;margin-bottom:10px;text-transform:uppercase;font-weight:normal}
+#welcome-sub{font-size:12px;opacity:0.4;letter-spacing:3px;margin-bottom:6px}
+#welcome-desc{font-size:12px;opacity:0.35;letter-spacing:1px;margin-bottom:36px;line-height:1.8}
+#start-btn{background:none;border:1px solid rgba(255,255,255,0.25);color:#fff;font-family:monospace;font-size:12px;letter-spacing:4px;padding:13px 36px;cursor:pointer;text-transform:uppercase;transition:all 0.2s;border-radius:3px}
+#start-btn:hover{background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.5)}
+.wing-pills{display:flex;gap:8px;justify-content:center;margin-bottom:28px;flex-wrap:wrap}
+.pill{font-size:10px;letter-spacing:2px;padding:4px 12px;border-radius:20px;opacity:0.6}
+
+#score-pop{position:absolute;top:42%;left:50%;transform:translateX(-50%);font-size:16px;letter-spacing:2px;opacity:0;transition:all 0.6s;pointer-events:none;color:#4ade80}
+</style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+
+<div id="hud">
+  <div id="crosshair"></div>
+  <div id="interact-hint"></div>
+  <div id="stats">
+    VISITED: <span id="s-vis">0</span>/16 &nbsp;|&nbsp;
+    EGGS: <span id="s-egg">0</span>/8 &nbsp;|&nbsp;
+    SCORE: <span id="s-score">0</span>
+  </div>
+  <div id="room-label"></div>
+  <div id="controls-hint">
+    WASD / ARROWS &mdash; WALK<br>
+    MOUSE &mdash; LOOK AROUND<br>
+    E / CLICK &mdash; INTERACT<br>
+    ESC &mdash; CLOSE / RELEASE MOUSE
+  </div>
+  <div id="minimap-wrap">
+    <div id="minimap-label">MINIMAP</div>
+    <canvas id="minimap" width="110" height="110"></canvas>
+  </div>
+
+  <!-- Exhibit Panel -->
+  <div id="panel">
+    <button id="close-btn" onclick="closePanel()">×</button>
+    <h2 id="p-era"></h2>
+    <h3 id="p-title"></h3>
+    <p id="p-body"></p>
+    <div id="npc">
+      <div id="npc-name"></div>
+      <div id="npc-text"></div>
+    </div>
+    <div id="egg-zone" onclick="findEgg()">
+      <div id="egg-label">[ HIDDEN EASTER EGG — CLICK TO REVEAL ]</div>
+      <div id="egg-text"></div>
+    </div>
+    <div id="quiz-section">
+      <div id="quiz-q"></div>
+      <div id="quiz-opts"></div>
+      <div id="quiz-result"></div>
+    </div>
+    <button id="tt-btn" onclick="timeTravelFromPanel()"></button>
+  </div>
+
+  <div id="toast"></div>
+  <div id="score-pop">+10</div>
+
+  <!-- Welcome Screen -->
+  <div id="welcome">
+    <div id="welcome-inner">
+      <h1>⬡ Nexus Museum</h1>
+      <div id="welcome-sub">Interactive VR Experience</div>
+      <div id="welcome-desc">
+        Walk through four wings of human history.<br>
+        Discover artifacts, solve quizzes, find hidden easter eggs.
+      </div>
+      <div class="wing-pills">
+        <span class="pill" style="background:rgba(0,170,255,0.12);color:#00aaff;border:1px solid rgba(0,170,255,0.2)">🌐 Internet</span>
+        <span class="pill" style="background:rgba(255,102,0,0.12);color:#ff6600;border:1px solid rgba(255,102,0,0.2)">🏛️ Ancient</span>
+        <span class="pill" style="background:rgba(170,85,255,0.12);color:#aa55ff;border:1px solid rgba(170,85,255,0.2)">🚀 Space</span>
+        <span class="pill" style="background:rgba(0,204,102,0.12);color:#00cc66;border:1px solid rgba(0,204,102,0.2)">🤖 AI</span>
+      </div>
+      <button id="start-btn" onclick="startGame()">Enter Museum</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ============================================================
+// EXHIBIT DATA
+// ============================================================
+const EXHIBITS = {
+  internet:[
+    {id:'i1',era:'1969 — ARPANET',title:'The First Message',color:0x00aaff,
+     body:'In October 1969, the first message was sent over ARPANET between UCLA and Stanford. The intended message was "LOGIN" — but the system crashed after just two letters. The first words ever transmitted on the internet were "LO." A beautiful accident that started everything.',
+     npc:{name:'OPERATOR CHARLEY // UCLA NODE, 1969',text:'"We typed L... O... then the whole thing went down. I called Stanford and told them what happened. We laughed. None of us had any idea what we were starting."'},
+     quiz:{q:'What was the first packet-switching network?',opts:['ARPANET','MILNET','USENET','CompuServe'],ans:0},
+     easter:'The second node on ARPANET was SRI International. The researcher who received that first "LO" was Charlie Kline. The crash was a buffer overflow — internet bugs started on day one.',
+     tt:'ancient',ttLabel:'Ancient Civilizations'},
+    {id:'i2',era:'1991 — WORLD WIDE WEB',title:"Berners-Lee's Proposal",color:0x0066ff,
+     body:"In 1989, Tim Berners-Lee submitted a proposal to CERN titled 'Information Management: A Proposal.' His boss wrote 'Vague but exciting' on the cover. That vague idea became the World Wide Web. The first website (info.cern.ch) is still online today.",
+     npc:{name:'DR. MIKE SENDALL // CERN, 1989',text:'"I wrote \'vague but exciting\' mostly to buy him time. I thought it was a clever filing system. I had no idea. I was spectacularly wrong."'},
+     quiz:{q:'What did Berners-Lee invent alongside the Web?',opts:['TCP/IP','HTML & HTTP','The browser','Email'],ans:1},
+     easter:'Tim Berners-Lee never patented the World Wide Web — he deliberately made it free. He was knighted in 2004. He later expressed regret about the double slash "//" in URLs, calling it "unnecessary."',
+     tt:'space',ttLabel:'Space Observatory'},
+    {id:'i3',era:'1994 — BROWSER WARS',title:'Netscape vs Microsoft',color:0x0044cc,
+     body:"Netscape Navigator briefly held 90% of the browser market. Microsoft responded by bundling Internet Explorer free with every copy of Windows. Netscape lost — but its codebase was open-sourced and eventually became Firefox.",
+     npc:{name:'NETSCAPE ENGINEER // 1998',text:'"Microsoft gave IE away free with every PC. How do you compete with free? We tried. We really tried. We never figured it out."'},
+     quiz:{q:'What browser descended from Netscape Navigator?',opts:['Safari','Chrome','Firefox','Opera'],ans:2},
+     easter:"The 'browser wars' legal battle found Microsoft guilty of antitrust violations in 2000. The judge initially ordered Microsoft split in two — a ruling later overturned on appeal.",
+     tt:'ai',ttLabel:'AI Archive'},
+    {id:'i4',era:'2007 — MOBILE WEB',title:'The iPhone Moment',color:0x0088ee,
+     body:"When Steve Jobs unveiled the iPhone, he said it was 'an iPod, a phone, and an internet communicator.' The audience laughed, thinking he meant three separate devices. He meant one. Within five years, mobile internet traffic permanently overtook desktop.",
+     npc:{name:'STEVE JOBS // MACWORLD 2007',text:'"Every once in a while, a revolutionary product comes along that changes everything. And Apple has been very fortunate — it\'s been able to introduce a few of these into the world."'},
+     quiz:{q:'When did mobile internet traffic overtake desktop globally?',opts:['2010','2012','2014','2016'],ans:3},
+     easter:'The original iPhone launched with no App Store — just 15 built-in apps. Jobs initially resisted third-party apps entirely, fearing security risks. The App Store arrived a full year later, in July 2008.',
+     tt:'ancient',ttLabel:'Ancient Civilizations'},
+  ],
+  ancient:[
+    {id:'a1',era:'3200 BCE — MESOPOTAMIA',title:'The First Writing',color:0xff6600,
+     body:"The earliest writing system, Sumerian cuneiform, was invented around 3200 BCE — not for poetry or history, but for accounting. The oldest surviving written records are beer rations and grain tallies. Humanity's first impulse was to keep receipts.",
+     npc:{name:'SCRIBE ENKIDU // URUK, 3100 BCE',text:'"I press the reed into the clay. Fourteen jugs of barley for the temple workers. It is not glamorous work, but someone must remember the numbers."'},
+     quiz:{q:'Cuneiform was originally written on what material?',opts:['Papyrus','Stone','Clay tablets','Leather'],ans:2},
+     easter:'One of the oldest complete recipes ever found is a Sumerian hymn to Ninkasi, goddess of beer — with detailed brewing instructions. Ancient Mesopotamian workers were partially paid in beer. Some things never change.',
+     tt:'internet',ttLabel:'Internet Wing'},
+    {id:'a2',era:'2560 BCE — EGYPT',title:'The Great Pyramid',color:0xff8800,
+     body:"The Great Pyramid of Giza was the tallest human-made structure for 3,800 years. Built with around 2.3 million stone blocks. Recent evidence shows workers were paid laborers — not slaves — who received medical care and daily beer rations.",
+     npc:{name:'OVERSEER HEMIUNU // GIZA, 2560 BCE',text:'"My workers call themselves \'Friends of Khufu\' and \'Drunkards of Menkaure.\' They take pride in their work. These men built Egypt."'},
+     quiz:{q:'How long was the Great Pyramid the tallest structure on Earth?',opts:['1,000 years','2,000 years','3,800 years','5,000 years'],ans:2},
+     easter:"In 2017, scientists found a hidden void inside the Great Pyramid using muon tomography — roughly the size of a passenger aircraft. No one knows what it is. It has never been entered.",
+     tt:'space',ttLabel:'Space Observatory'},
+    {id:'a3',era:'500 BCE — GREECE',title:'Democracy & The Agora',color:0xdd5500,
+     body:"Athens invented direct democracy — citizens voted on every law themselves. The Agora was its beating heart: market, courtroom, and political arena in one. Ostracism meant writing a name on a pottery shard to exile someone for 10 years.",
+     npc:{name:'KLEISTHENES // ATHENS, 508 BCE',text:'"Every citizen will have an equal voice in the assembly. They said it was chaos. I say it is justice. Let history decide."'},
+     quiz:{q:'What was the pottery shard used in Athenian exile votes called?',opts:['Trireme','Ostrakon','Agora','Demos'],ans:1},
+     easter:"The most famous ostracism: a voter asked Aristides himself to write a name on the shard, not knowing who he was. When asked why he wanted Aristides exiled, the man said: 'I'm sick of hearing him called the Just.' Aristides wrote his own name and handed it back.",
+     tt:'ai',ttLabel:'AI Archive'},
+    {id:'a4',era:'44 BCE — ROME',title:'The Ides of March',color:0xff4400,
+     body:"Julius Caesar was stabbed 23 times on March 15, 44 BCE. A physician later found only one wound was actually fatal. The 23 conspirators each took a turn. Caesar fell at the base of a statue of his old rival Pompey.",
+     npc:{name:'MARCUS BRUTUS // THE SENATE, 44 BCE',text:'"I did not act from hatred. I acted because Rome cannot survive a king. History will decide whether I was right. I fear it will not be kind."'},
+     quiz:{q:"Who was Caesar's adopted heir and first emperor of Rome?",opts:['Mark Antony','Brutus','Augustus','Tiberius'],ans:2},
+     easter:"Caesar had been warned to 'Beware the Ides of March.' Passing the seer that morning, he joked: 'Well, the Ides have come.' The seer replied: 'They have come, but they have not yet gone.'",
+     tt:'internet',ttLabel:'Internet Wing'},
+  ],
+  space:[
+    {id:'s1',era:'1957 — SPUTNIK',title:'The Beeping Ball',color:0xaa55ff,
+     body:"Sputnik 1 was just a 58cm aluminum sphere with four antennas. It did nothing but beep. Yet that single beeping signal sent a shockwave through the United States. Within 18 months, NASA was created. One radio signal from orbit changed civilization.",
+     npc:{name:'SERGEI KOROLEV // BAIKONUR, 1957',text:'"The Americans were not ready. The simplest satellite — just a beep — would be enough. And it was. Everything after Sputnik is different."'},
+     quiz:{q:'How long did Sputnik 1 remain in orbit?',opts:['3 weeks','3 months','6 months','2 years'],ans:1},
+     easter:'The USSR made the broadcast frequency public so anyone could hear it. Citizens across the US stood outside watching it pass overhead — a glowing dot moving against the stars. They wanted the world to witness.',
+     tt:'internet',ttLabel:'Internet Wing'},
+    {id:'s2',era:'1969 — APOLLO 11',title:'One Small Step',color:0x8800ff,
+     body:"On July 20, 1969, Neil Armstrong became the first human to walk on the Moon. The guidance computer had less processing power than a modern USB charger. A 1202 alarm fired seconds before landing. The mission continued. Armstrong's heart rate hit 150 bpm at touchdown.",
+     npc:{name:'NEIL ARMSTRONG // TRANQUILITY BASE',text:'"The surface is fine and powdery. I can pick it up loosely with my toe. It adheres in fine layers, like powdered charcoal, to the sole of my boot."'},
+     quiz:{q:'What was the Apollo 11 lunar module named?',opts:['Columbia','Eagle','Challenger','Intrepid'],ans:1},
+     easter:"President Nixon had a pre-written speech ready if the astronauts were stranded on the Moon. It began: 'Fate has ordained that the men who went to the Moon to explore in peace will stay on the Moon to rest in peace.'",
+     tt:'ancient',ttLabel:'Ancient Civilizations'},
+    {id:'s3',era:'1990 — HUBBLE',title:'The Blind Eye That Saw Everything',color:0x6600ee,
+     body:"When Hubble launched in 1990, NASA discovered its mirror was ground to the wrong shape — off by just 2.2 micrometers. The $1.5B telescope was nearly useless. In 1993, astronauts installed corrective optics in orbit. Hubble then revealed the universe as never before seen.",
+     npc:{name:'ASTRONAUT STORY MUSGRAVE // 1993',text:'"We\'re 330 miles up, doing 17,000 mph, and I\'m in a spacesuit replacing a camera the size of a phone booth. You focus. You do the job. You don\'t look down."'},
+     quiz:{q:'What did the famous Hubble Deep Field image reveal?',opts:['The Milky Way','Thousands of distant galaxies','The Big Bang','A black hole'],ans:1},
+     easter:"The Hubble Deep Field (1995) pointed at a patch 'no bigger than a grain of sand held at arm's length' — believed to contain nothing. A 10-day exposure revealed over 3,000 galaxies. Every smudge of light: a billion stars.",
+     tt:'ai',ttLabel:'AI Archive'},
+    {id:'s4',era:'2021 — MARS',title:'First Flight on Another World',color:0x9944ff,
+     body:"On April 19, 2021, NASA's Ingenuity helicopter became the first powered aircraft to fly on another planet. The first flight lasted 39.1 seconds. Onboard: a small piece of cloth from the Wright Brothers' original Flyer at Kitty Hawk.",
+     npc:{name:'MIMI AUN // JPL FLIGHT ENGINEER',text:'"We had 6 minutes to wait for confirmation from Mars. Six minutes of not breathing. Then the signal came through. It flew. We all screamed."'},
+     quiz:{q:"How much thinner is Mars's atmosphere vs Earth's?",opts:['2×','10×','100×','1000×'],ans:2},
+     easter:"Ingenuity runs on a Qualcomm Snapdragon 801 — the same chip in 2014 Android phones. The most alien place ever flown used decade-old phone tech running Linux.",
+     tt:'ancient',ttLabel:'Ancient Civilizations'},
+  ],
+  ai:[
+    {id:'ai1',era:'1950 — TURING TEST',title:'Can Machines Think?',color:0x00cc66,
+     body:"In 1950, Alan Turing published 'Computing Machinery and Intelligence,' introducing the Imitation Game — later called the Turing Test. He proposed a simple criterion for machine intelligence: can a human tell it from a person? He predicted machines would pass by 2000. He was optimistic.",
+     npc:{name:'ALAN TURING // CAMBRIDGE, 1950',text:'"I propose to consider the question: Can machines think? I believe that at the end of the century, one will be able to speak of machines thinking without expecting to be contradicted."'},
+     quiz:{q:'What was Turing most famous for during WWII?',opts:['The atomic bomb','Breaking the Enigma cipher','Inventing radar','Sonar development'],ans:1},
+     easter:"Turing was prosecuted in 1952 for being gay — then illegal in the UK. He was subjected to chemical castration as an alternative to prison. He died in 1954, officially by suicide. In 2021, his face appeared on the UK £50 note.",
+     tt:'internet',ttLabel:'Internet Wing'},
+    {id:'ai2',era:'1997 — DEEP BLUE',title:'The Machine That Beat Kasparov',color:0x00ee77,
+     body:"IBM's Deep Blue defeated world chess champion Garry Kasparov 2.5–1.5 in a six-game match — the first computer to beat a reigning world champion under tournament conditions. Kasparov accused IBM of cheating and demanded the move logs. IBM declined, then immediately retired Deep Blue.",
+     npc:{name:'GARRY KASPAROV // NEW YORK, 1997',text:'"In game two, move 36 — I saw creativity. I felt genuine fear. Not the fear of losing chess. Something deeper. I thought: this thing understands. I still believe that move was played by a human."'},
+     quiz:{q:'How many chess positions per second could Deep Blue evaluate?',opts:['10,000','1 million','200 million','10 billion'],ans:2},
+     easter:"The 'creative' move Kasparov feared in Game 2 — Rook to e6, move 36 — was caused by a bug. When Deep Blue couldn't decide between moves, it chose randomly. The most famous move in AI history was an accident.",
+     tt:'space',ttLabel:'Space Observatory'},
+    {id:'ai3',era:'2012 — DEEP LEARNING',title:'The ImageNet Moment',color:0x00dd55,
+     body:"AlexNet entered the ImageNet image recognition competition in 2012 and beat second place by 10.8 percentage points — a margin so large it seemed like a mistake. It wasn't. Deep learning had arrived. Three researchers from U of Toronto effectively launched the modern AI era.",
+     npc:{name:'GEOFF HINTON // TORONTO, 2012',text:'"When the numbers came in, even we didn\'t fully believe them. A 10% gap doesn\'t happen in these competitions. I thought there was an error. There wasn\'t."'},
+     quiz:{q:'What architecture did AlexNet use that became foundational?',opts:['RNN','Convolutional neural network','Transformer','Decision tree'],ans:1},
+     easter:"Geoff Hinton left Google in 2023 to speak freely about AI risks. He and his co-authors received the 2024 Nobel Prize in Physics for contributions to machine learning.",
+     tt:'ancient',ttLabel:'Ancient Civilizations'},
+    {id:'ai4',era:'2017 — TRANSFORMERS',title:'"Attention Is All You Need"',color:0x44ff88,
+     body:"Eight Google researchers published 'Attention Is All You Need,' introducing the Transformer architecture. Every major AI language model today — GPT, BERT, Claude, Gemini — is built on this. All eight authors have since scattered to found or join AI companies.",
+     npc:{name:'ASHISH VASWANI // GOOGLE BRAIN, 2017',text:'"We called it the Transformer because it transformed sequences. We knew it was a good architecture. We did not know it was going to be... everything. The name feels different now."'},
+     quiz:{q:'What mechanism is central to the Transformer architecture?',opts:['Backpropagation','Self-attention','Convolution','Recurrence'],ans:1},
+     easter:"Of the eight 'Attention Is All You Need' authors, six left Google within five years to co-found AI startups. The paper has been cited over 150,000 times — one of the most influential in CS history.",
+     tt:'space',ttLabel:'Space Observatory'},
+  ]
+};
+
+// ============================================================
+// STATE
+// ============================================================
+let scene, camera, renderer, clock;
+let yaw=0, pitch=0;
+let keys={};
+let exhibits3d=[];
+let lookedAt=null;
+let currentExhibit=null;
+let visited=new Set(), eggs=new Set(), score=0, quizDone=new Set();
+let panelOpen=false;
+let started=false;
+let toastTimer;
+let frameN=0;
+
+const ROOM_DEFS = {
+  internet: {cx:15,  cz:15,  color:0x00aaff, label:'Internet Wing'},
+  ancient:  {cx:65,  cz:15,  color:0xff6600, label:'Ancient Civilizations'},
+  space:    {cx:15,  cz:65,  color:0xaa55ff, label:'Space Observatory'},
+  ai:       {cx:65,  cz:65,  color:0x00cc66, label:'AI Archive'},
+};
+
+// ============================================================
+// START
+// ============================================================
+function startGame(){
+  document.getElementById('welcome').style.display='none';
+  started=true;
+  initThree();
+  lockPointer();
+  requestAnimationFrame(gameLoop);
+}
+
+function lockPointer(){
+  const c=document.getElementById('canvas');
+  (c.requestPointerLock||c.mozRequestPointerLock||function(){}).call(c);
+}
+
+// ============================================================
+// THREE.JS SCENE
+// ============================================================
+function initThree(){
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x000008, 0.016);
+  scene.background = new THREE.Color(0x000008);
+
+  renderer = new THREE.WebGLRenderer({canvas:document.getElementById('canvas'), antialias:true});
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+
+  camera = new THREE.PerspectiveCamera(72, window.innerWidth/window.innerHeight, 0.1, 350);
+  camera.position.set(40, 1.7, 40);
+
+  clock = new THREE.Clock();
+
+  // Stars
+  const sg = new THREE.BufferGeometry();
+  const sv = [];
+  for(let i=0;i<4000;i++) sv.push((Math.random()-0.5)*500, Math.random()*150+15, (Math.random()-0.5)*500);
+  sg.setAttribute('position', new THREE.Float32BufferAttribute(sv,3));
+  scene.add(new THREE.Points(sg, new THREE.PointsMaterial({color:0xffffff,size:0.12,sizeAttenuation:true})));
+
+  // Ambient light
+  scene.add(new THREE.AmbientLight(0x080820, 1.2));
+
+  // Build rooms
+  Object.entries(ROOM_DEFS).forEach(([key, def]) => buildRoom(key, def));
+
+  // Corridors
+  buildCorridors();
+
+  window.addEventListener('resize', ()=>{
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+}
+
+function buildRoom(key, def){
+  const {cx, cz, color} = def;
+  const W=28, H=6, D=28;
+  const mat_wall = new THREE.MeshStandardMaterial({color:0x080b18, roughness:0.9});
+  const mat_floor = new THREE.MeshStandardMaterial({color:0x05080f, roughness:0.95});
+
+  // Floor
+  const fl = new THREE.Mesh(new THREE.PlaneGeometry(W,D), mat_floor);
+  fl.rotation.x = -Math.PI/2;
+  fl.position.set(cx, 0, cz);
+  scene.add(fl);
+
+  // Ceiling
+  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W,D), new THREE.MeshStandardMaterial({color:0x040610}));
+  ceil.rotation.x = Math.PI/2;
+  ceil.position.set(cx, H, cz);
+  scene.add(ceil);
+
+  // Walls
+  const halfW=W/2, halfD=D/2;
+  [
+    [cx, H/2, cz-halfD, W, H, 0.25],
+    [cx, H/2, cz+halfD, W, H, 0.25],
+    [cx-halfW, H/2, cz, 0.25, H, D],
+    [cx+halfW, H/2, cz, 0.25, H, D],
+  ].forEach(([x,y,z,w,h,d])=>{
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat_wall);
+    m.position.set(x,y,z);
+    scene.add(m);
+  });
+
+  // Room glow light
+  const pl = new THREE.PointLight(color, 1.2, 35);
+  pl.position.set(cx, 4.5, cz);
+  scene.add(pl);
+
+  // Grid floor accent
+  const grid = new THREE.GridHelper(W-2, 12, color, new THREE.Color(color).multiplyScalar(0.1));
+  grid.position.set(cx, 0.01, cz);
+  scene.add(grid);
+
+  // 4 exhibit pedestals in 2x2
+  const offsets = [[-8,-8],[-8,8],[8,-8],[8,8]];
+  EXHIBITS[key].forEach((exhibit, i)=>{
+    const [ox, oz] = offsets[i];
+    const px = cx+ox, pz = cz+oz;
+
+    // Pedestal base
+    const ped = new THREE.Mesh(
+      new THREE.BoxGeometry(1.1,1.1,1.1),
+      new THREE.MeshStandardMaterial({color:0x0c1020, roughness:0.7, metalness:0.4})
+    );
+    ped.position.set(px, 0.55, pz);
+    scene.add(ped);
+
+    // Glowing ring on top of pedestal
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.65, 0.04, 8, 36),
+      new THREE.MeshStandardMaterial({color, emissive:color, emissiveIntensity:0.9, roughness:0.2})
+    );
+    ring.rotation.x = Math.PI/2;
+    ring.position.set(px, 1.14, pz);
+    scene.add(ring);
+
+    // Floating artifact
+    const artGeo = new THREE.OctahedronGeometry(0.32, 0);
+    const artMat = new THREE.MeshStandardMaterial({color, emissive:color, emissiveIntensity:0.5, roughness:0.2, metalness:0.8});
+    const art = new THREE.Mesh(artGeo, artMat);
+    art.position.set(px, 1.75, pz);
+    scene.add(art);
+
+    // Small accent light above artifact
+    const aLight = new THREE.PointLight(color, 0.9, 5);
+    aLight.position.set(px, 2.4, pz);
+    scene.add(aLight);
+
+    exhibits3d.push({mesh:art, ring, light:aLight, data:exhibit, px, pz, t:Math.random()*Math.PI*2});
+  });
+}
+
+function buildCorridors(){
+  const mat = new THREE.MeshStandardMaterial({color:0x05070e, roughness:0.95});
+  // Horizontal hall
+  const hh = new THREE.Mesh(new THREE.BoxGeometry(88,6,10), mat);
+  hh.position.set(40,3,40); scene.add(hh);
+  // Vertical hall
+  const vh = new THREE.Mesh(new THREE.BoxGeometry(10,6,88), mat);
+  vh.position.set(40,3,40); scene.add(vh);
+  // Center node floor
+  const cf = new THREE.Mesh(new THREE.PlaneGeometry(10,10), new THREE.MeshStandardMaterial({color:0x060a14}));
+  cf.rotation.x=-Math.PI/2; cf.position.set(40,0.01,40); scene.add(cf);
+  // Corridor lights
+  [[15,40],[65,40],[40,15],[40,65]].forEach(([x,z])=>{
+    const l = new THREE.PointLight(0x2233aa, 0.4, 18);
+    l.position.set(x,3.5,z); scene.add(l);
+  });
+  // Center light
+  const cl = new THREE.PointLight(0x334488, 0.6, 25);
+  cl.position.set(40,4,40); scene.add(cl);
+}
+
+// ============================================================
+// GAME LOOP
+// ============================================================
+const raycaster = new THREE.Raycaster();
+const screenCenter = new THREE.Vector2(0,0);
+
+function gameLoop(){
+  requestAnimationFrame(gameLoop);
+  if(!started) return;
+  const dt = clock.getDelta();
+  frameN++;
+
+  // Camera rotation
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = yaw;
+  camera.rotation.x = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, pitch));
+
+  // Movement (only when panel closed)
+  if(!panelOpen){
+    const spd = 9 * dt;
+    const dir = new THREE.Vector3();
+    if(keys['w']||keys['arrowup'])    dir.z -= 1;
+    if(keys['s']||keys['arrowdown'])  dir.z += 1;
+    if(keys['a']||keys['arrowleft'])  dir.x -= 1;
+    if(keys['d']||keys['arrowright']) dir.x += 1;
+    dir.normalize().applyEuler(new THREE.Euler(0, yaw, 0));
+    const np = camera.position.clone().addScaledVector(dir, spd);
+    np.y = 1.7;
+    np.x = Math.max(-3, Math.min(83, np.x));
+    np.z = Math.max(-3, Math.min(83, np.z));
+    camera.position.copy(np);
+  }
+
+  // Animate floating artifacts
+  exhibits3d.forEach(e=>{
+    e.t += dt * 1.1;
+    e.mesh.position.y = 1.75 + Math.sin(e.t) * 0.13;
+    e.mesh.rotation.y = e.t * 0.8;
+    e.mesh.rotation.x = e.t * 0.25;
+  });
+
+  // Raycasting for hover
+  if(!panelOpen){
+    raycaster.setFromCamera(screenCenter, camera);
+    const hits = raycaster.intersectObjects(exhibits3d.map(e=>e.mesh));
+    if(hits.length > 0 && hits[0].distance < 5){
+      const hit = exhibits3d.find(e=>e.mesh===hits[0].object);
+      if(hit){
+        if(lookedAt && lookedAt!==hit){ resetGlow(lookedAt); }
+        lookedAt = hit;
+        hit.mesh.material.emissiveIntensity = 1.0;
+        hit.ring.material.emissiveIntensity = 2.2;
+        document.getElementById('interact-hint').style.opacity = '1';
+        document.getElementById('interact-hint').textContent = '[ E ]  ' + hit.data.title;
+      }
+    } else {
+      if(lookedAt){ resetGlow(lookedAt); lookedAt=null; }
+      document.getElementById('interact-hint').style.opacity = '0';
+    }
+  }
+
+  // Room label
+  document.getElementById('room-label').textContent = getRoomLabel(camera.position.x, camera.position.z);
+
+  drawMinimap();
+  renderer.render(scene, camera);
+}
+
+function resetGlow(e){
+  e.mesh.material.emissiveIntensity = 0.5;
+  e.ring.material.emissiveIntensity = 0.9;
+}
+
+function getRoomLabel(x,z){
+  if(x<30&&z<30) return 'Internet Wing';
+  if(x>50&&z<30) return 'Ancient Civilizations';
+  if(x<30&&z>50) return 'Space Observatory';
+  if(x>50&&z>50) return 'AI Archive';
+  return 'Central Corridor';
+}
+
+// ============================================================
+// MINIMAP
+// ============================================================
+function drawMinimap(){
+  const c = document.getElementById('minimap');
+  const ctx = c.getContext('2d');
+  const W=110, H=110, SCALE=W/86;
+  ctx.clearRect(0,0,W,H);
+
+  // Room fills
+  const rooms=[
+    {x:1,z:1,color:'rgba(0,100,200,0.2)',border:'rgba(0,150,255,0.4)',label:'NET'},
+    {x:51,z:1,color:'rgba(200,80,0,0.2)',border:'rgba(255,120,0,0.4)',label:'ANC'},
+    {x:1,z:51,color:'rgba(140,60,220,0.2)',border:'rgba(180,80,255,0.4)',label:'SPC'},
+    {x:51,z:51,color:'rgba(0,160,80,0.2)',border:'rgba(0,200,100,0.4)',label:'AI'},
+  ];
+  rooms.forEach(r=>{
+    ctx.fillStyle=r.color; ctx.strokeStyle=r.border; ctx.lineWidth=0.5;
+    ctx.fillRect(r.x,r.z,48,48); ctx.strokeRect(r.x,r.z,48,48);
+    ctx.fillStyle=r.border; ctx.font='7px monospace';
+    ctx.fillText(r.label, r.x+18, r.z+26);
+  });
+
+  // Corridors
+  ctx.fillStyle='rgba(255,255,255,0.04)';
+  ctx.fillRect(36,0,24,W); ctx.fillRect(0,36,H,24);
+
+  // Exhibit dots
+  exhibits3d.forEach(e=>{
+    const mx=e.px*SCALE, mz=e.pz*SCALE;
+    const col = visited.has(e.data.id) ? '#44ff88' : 'rgba(255,255,255,0.3)';
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(mx,mz,2.5,0,Math.PI*2); ctx.fill();
+  });
+
+  // Player
+  const px=camera.position.x*SCALE, pz=camera.position.z*SCALE;
+  ctx.fillStyle='#ffffff'; ctx.beginPath(); ctx.arc(px,pz,3.5,0,Math.PI*2); ctx.fill();
+  // Direction arrow
+  const dx=Math.sin(yaw)*10, dz=-Math.cos(yaw)*10;
+  ctx.strokeStyle='rgba(255,255,255,0.7)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(px,pz); ctx.lineTo(px+dx,pz+dz); ctx.stroke();
+}
+
+// ============================================================
+// CONTROLS
+// ============================================================
+document.addEventListener('mousemove', e=>{
+  if(document.pointerLockElement===document.getElementById('canvas')){
+    yaw -= e.movementX * 0.002;
+    pitch -= e.movementY * 0.002;
+  }
+});
+document.addEventListener('keydown', e=>{
+  keys[e.key.toLowerCase()] = true;
+  if(e.key==='e'||e.key==='E') interact();
+  if(e.key==='Escape'){
+    if(panelOpen) closePanel();
+    else document.exitPointerLock();
+  }
+});
+document.addEventListener('keyup', e=>{ keys[e.key.toLowerCase()] = false; });
+document.addEventListener('pointerlockchange', ()=>{
+  if(!document.pointerLockElement && !panelOpen){
+    // mouse freed — clicking canvas re-locks
+  }
+});
+document.getElementById('canvas').addEventListener('click', ()=>{
+  if(!started) return;
+  if(!panelOpen && document.pointerLockElement!==document.getElementById('canvas')){
+    lockPointer();
+  } else if(!panelOpen && lookedAt){
+    interact();
+  }
+});
+
+function interact(){
+  if(panelOpen || !lookedAt) return;
+  openExhibit(lookedAt.data);
+}
+
+// ============================================================
+// EXHIBIT PANEL
+// ============================================================
+function openExhibit(ex){
+  if(panelOpen) return;
+  document.exitPointerLock();
+  currentExhibit = ex;
+  visited.add(ex.id);
+  panelOpen = true;
+
+  document.getElementById('p-era').textContent = ex.era;
+  document.getElementById('p-title').textContent = ex.title;
+  document.getElementById('p-body').textContent = ex.body;
+  document.getElementById('npc-name').textContent = ex.npc.name;
+  document.getElementById('npc-text').textContent = ex.npc.text;
+
+  // Easter egg
+  const eggFound = eggs.has(ex.id);
+  document.getElementById('egg-label').textContent = eggFound ? '[ EASTER EGG — FOUND ]' : '[ HIDDEN EASTER EGG — CLICK TO REVEAL ]';
+  document.getElementById('egg-text').textContent = eggFound ? ex.easter : '';
+  document.getElementById('egg-zone').style.cursor = eggFound ? 'default' : 'pointer';
+  document.getElementById('egg-zone').style.background = eggFound ? 'rgba(255,140,0,0.07)' : '';
+
+  // Quiz
+  const done = quizDone.has(ex.id);
+  document.getElementById('quiz-q').textContent = 'CHALLENGE: ' + ex.quiz.q;
+  const optsDiv = document.getElementById('quiz-opts');
+  optsDiv.innerHTML = '';
+  ex.quiz.opts.forEach((opt,i)=>{
+    const b = document.createElement('button');
+    b.className = 'qopt';
+    b.textContent = opt;
+    if(done){ b.disabled=true; if(i===ex.quiz.ans) b.classList.add('correct'); }
+    else { b.onclick = ()=>answerQuiz(ex,i,b); }
+    optsDiv.appendChild(b);
+  });
+  const res = document.getElementById('quiz-result');
+  res.textContent = done ? 'ALREADY ANSWERED' : '';
+  res.style.color = done ? 'rgba(255,255,255,0.3)' : '';
+
+  // Time travel button
+  document.getElementById('tt-btn').textContent = '[ TIME TRAVEL ] → ' + (ex.ttLabel||ex.tt).toUpperCase();
+
+  document.getElementById('panel').style.display = 'block';
+  updateStats();
+}
+
+function closePanel(){
+  document.getElementById('panel').style.display = 'none';
+  panelOpen = false;
+  currentExhibit = null;
+  lockPointer();
+}
+
+function findEgg(){
+  if(!currentExhibit || eggs.has(currentExhibit.id)) return;
+  eggs.add(currentExhibit.id);
+  document.getElementById('egg-label').textContent = '[ EASTER EGG — FOUND! ]';
+  document.getElementById('egg-text').textContent = currentExhibit.easter;
+  document.getElementById('egg-zone').style.cursor = 'default';
+  document.getElementById('egg-zone').style.background = 'rgba(255,140,0,0.07)';
+  showToast('EGG FOUND (' + eggs.size + '/8)');
+  updateStats();
+}
+
+function answerQuiz(ex, chosen, btn){
+  if(quizDone.has(ex.id)) return;
+  quizDone.add(ex.id);
+  document.querySelectorAll('.qopt').forEach(b=>b.disabled=true);
+  const correct = chosen === ex.quiz.ans;
+  btn.classList.add(correct ? 'correct' : 'wrong');
+  if(!correct) document.querySelectorAll('.qopt')[ex.quiz.ans].classList.add('correct');
+  if(correct){ score+=10; showScorePop(); }
+  const res = document.getElementById('quiz-result');
+  res.textContent = correct ? 'CORRECT — +10 POINTS' : 'INCORRECT';
+  res.style.color = correct ? '#4ade80' : '#f87171';
+  updateStats();
+}
+
+function timeTravelFromPanel(){
+  if(!currentExhibit) return;
+  const dest = currentExhibit.tt;
+  const pos = {internet:{x:15,z:15}, ancient:{x:65,z:15}, space:{x:15,z:65}, ai:{x:65,z:65}};
+  closePanel();
+  setTimeout(()=>{
+    const p = pos[dest];
+    camera.position.set(p.x, 1.7, p.z);
+    showToast('TIME JUMP — ' + (currentExhibit?.ttLabel||dest).toUpperCase());
+  },150);
+}
+
+// ============================================================
+// UI HELPERS
+// ============================================================
+function updateStats(){
+  document.getElementById('s-vis').textContent = visited.size;
+  document.getElementById('s-egg').textContent = eggs.size;
+  document.getElementById('s-score').textContent = score;
+}
+
+function showScorePop(){
+  const el = document.getElementById('score-pop');
+  el.style.opacity='1'; el.style.top='40%';
+  setTimeout(()=>{ el.style.opacity='0'; el.style.top='36%'; }, 1000);
+}
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.opacity='1';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.style.opacity='0', 2600);
+}
+</script>
+</body>
+</html>
